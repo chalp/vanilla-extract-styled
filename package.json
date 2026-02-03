@@ -17,6 +17,9 @@
     },
     "./package.json": "./package.json"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "vite build",
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
@@ -52,6 +55,7 @@
     "vite": "^7",
     "vite-plugin-checker": "^0",
     "vite-plugin-dts": "^4",
-    "vitest": "^4"
+    "vitest": "^4",
+    "happy-dom": "^20"
   }
 }

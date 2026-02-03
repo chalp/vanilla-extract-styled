@@ -8,15 +8,7 @@ export default defineConfig({
     vanillaExtractPlugin(),
   ],
   test: {
-    environment: 'jsdom',
+    environment: 'happy-dom',
     globals: true,
-    // Ensure .css.ts files are transformed by Vite's plugin pipeline
-    transformMode: {
-      web: [/\.css\.ts$/],
-    },
-    // Inline these packages so they are transformed together with the tests
-    deps: {
-      inline: ['@vanilla-extract/recipes', '@vanilla-extract/css'],
-    },
   },
 });
