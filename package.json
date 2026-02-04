@@ -1,18 +1,18 @@
 {
   "name": "@chalp/vanilla-extract-styled",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "files": [
     "./build"
   ],
   "main": "./build/index.cjs",
-  "module": "./build/index.mjs",
+  "module": "./build/index.js",
   "types": "./build/index.d.ts",
   "sideEffects": false,
   "exports": {
     ".": {
       "types": "./build/index.d.ts",
-      "import": "./build/index.mjs",
+      "import": "./build/index.js",
       "require": "./build/index.cjs"
     },
     "./package.json": "./package.json"
