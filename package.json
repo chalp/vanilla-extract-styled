@@ -1,6 +1,6 @@
 {
   "name": "@chalp/vanilla-extract-styled",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "type": "module",
   "files": [
     "./build"
@@ -28,15 +28,15 @@
   "peerDependencies": {
     "@vanilla-extract/css": "^1",
     "@vanilla-extract/recipes": "^0",
-    "react": ">=17.0.0",
-    "react-dom": ">=17.0.0"
+    "react": ">=17 <20",
+    "react-dom": ">=17 <20"
   },
   "devDependencies": {
     "@chalp/eslint-airbnb": "^1",
     "@stylistic/eslint-plugin-js": "^4",
     "@stylistic/eslint-plugin-ts": "^4",
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
+    "@types/react": "^17",
+    "@types/react-dom": "^17",
     "@typescript-eslint/eslint-plugin": "^8",
     "@typescript-eslint/parser": "^8",
     "@vanilla-extract/css": "^1",
@@ -47,8 +47,8 @@
     "eslint-import-resolver-typescript": "^4",
     "eslint-plugin-import": "^2",
     "eslint-plugin-jsx-a11y": "^6",
-    "react": "^18",
-    "react-dom": "^18",
+    "react": "^17",
+    "react-dom": "^17",
     "typescript": "5",
     "typescript-eslint": "^8",
     "uuid": "^13",
