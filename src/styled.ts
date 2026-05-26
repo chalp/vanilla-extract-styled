@@ -20,9 +20,13 @@ type RecipeOrClass = RuntimeFn<VariantGroups> | string;
 
 type EmptyObject = NonNullable<unknown>;
 
+type WithTransient<T> = T & {
+  [K in keyof T as K extends `$${string}` ? never : `$${string & K}`]?: T[K];
+};
+
 type VariantPropsFromMerged<T extends readonly RecipeOrClass[]> = T[number] extends infer V
   ? V extends RuntimeFn<VariantGroups>
-    ? RecipeVariants<V>
+    ? WithTransient<RecipeVariants<V>>
     : EmptyObject
   : EmptyObject;
 
