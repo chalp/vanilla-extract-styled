@@ -54,4 +54,54 @@ describe('styled', () => {
     expect(boxCn).toContain('box');
     expect(boxCn).toContain('c');
   });
+
+  it('strips $-prefixed props for host elements (string elemType)', () => {
+    const Button = styled('button', buttonRecipe);
+
+    const el = (Button as unknown as (props?: Record<string, unknown>) => { props: Record<string, unknown> })({
+      $variant: 'primary',
+      $size: 'small',
+      title: 'ok',
+    });
+
+    const cn = String(el.props.className);
+    expect(cn).toContain('btn--variant-primary');
+    expect(cn).toContain('btn--size-small');
+    // $-prefixed props should NOT appear in element props
+    expect(Object.hasOwn(el.props, '$variant')).toBe(false);
+    expect(Object.hasOwn(el.props, '$size')).toBe(false);
+    // regular props should still be forwarded
+    expect(el.props.title).toBe('ok');
+  });
+
+  it('passes $-prefixed props through for composite components (non-string elemType)', () => {
+    const BaseButton = styled('button', buttonRecipe);
+    const EnhancedButton = styled(BaseButton, shadowRecipe);
+
+    const el = (EnhancedButton as unknown as (props?: Record<string, unknown>) => { props: Record<string, unknown> })({
+      $depth: '2',
+      variant: 'primary',
+    });
+
+    const cn = String(el.props.className);
+    expect(cn).toContain('shadow--depth-2');
+    // $-prefixed props should be forwarded to the composite component
+    expect(Object.hasOwn(el.props, '$depth')).toBe(true);
+    // regular props forwarded as usual
+    expect(Object.hasOwn(el.props, 'variant')).toBe(true);
+  });
+
+  it('prefers direct prop over $-prefixed when both exist for recipe', () => {
+    const Button = styled('button', buttonRecipe);
+
+    const el = (Button as unknown as (props?: Record<string, unknown>) => { props: Record<string, unknown> })({
+      variant: 'ghost',
+      $variant: 'primary',
+    });
+
+    const cn = String(el.props.className);
+    // direct 'variant' takes priority over '$variant'
+    expect(cn).toContain('btn--variant-ghost');
+    expect(cn).not.toContain('btn--variant-primary');
+  });
 });

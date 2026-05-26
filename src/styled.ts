@@ -31,6 +31,8 @@ type StyledReturn<
   T extends readonly RecipeOrClass[],
 > = ComponentType<ComponentPropsWithoutRef<E> & VariantPropsFromMerged<T> & { className?: string }>;
 
+const TRANSIENT_PROP_PREFIX = '$';
+
 const isClassName = (v: unknown): v is string => typeof v === 'string';
 
 const callRecipeSafely = <
@@ -42,8 +44,10 @@ const callRecipeSafely = <
   props: P,
 ): string => {
   const recipeOptions = Object.keys(recipeFn.classNames.variants).reduce((acc, key) => {
-    if (Object.hasOwn(props, key)) {
-      acc[key] = props[key];
+    const value = props[key] ?? props[`${TRANSIENT_PROP_PREFIX}${key}`];
+
+    if (value !== undefined) {
+      acc[key] = value;
     }
 
     return acc;
@@ -60,13 +64,18 @@ export const styled = <
   elemType: E,
   ...recipes: T
 ): StyledReturn<E, T> => (props: Record<string, unknown> = {}) => {
-  const { className: classNameInner, ...rest } = props || {};
+  const { className: classNameInner, ...rest } = props;
 
   const classes = recipes.map((r) => (
     isClassName(r) ? r : callRecipeSafely(r, rest)
   ));
 
-  const elementProps = rest as Record<string, unknown>;
+  const isHostElement = typeof elemType === 'string';
+  const elementProps = (
+    isHostElement
+      ? Object.fromEntries(Object.entries(rest).filter(([key]) => !key.startsWith(TRANSIENT_PROP_PREFIX)))
+      : rest
+  ) as Record<string, unknown>;
 
   const className = [...classes, classNameInner as string | undefined].filter((clx) => !!clx).join(' ');
 

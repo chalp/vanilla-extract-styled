@@ -3,6 +3,17 @@ import airbnbReact from '@chalp/eslint-airbnb/react';
 import airbnbTypescript from '@chalp/eslint-airbnb/typescript';
 
 export default [
+  {
+    ignores: [
+      'build/',
+      'node_modules/',
+      '.vite/',
+      '**/*.d.ts',
+      'eslint.config.mjs',
+      'vite.config.ts',
+      'vitest.config.ts',
+    ],
+  },
   ...airbnbBase,
   ...airbnbReact,
   ...airbnbTypescript,

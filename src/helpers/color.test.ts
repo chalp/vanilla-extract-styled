@@ -6,9 +6,9 @@ import {
 
 import {
   darken, lighten, opacify,
-} from './helpers';
+} from './color';
 
-describe('helpers (integration)', () => {
+describe('color helpers', () => {
   it('exports helpers that produce CSS color-mix strings', () => {
     expect(darken('#ffcc00', 0.15)).toContain('color-mix');
     expect(darken('#ffcc00', 0.15)).toContain('15%');

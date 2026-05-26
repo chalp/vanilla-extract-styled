@@ -48,7 +48,7 @@ How `styled` calls a recipe function
 
 The implementation takes each recipe function and calls it like this:
 - it inspects `recipeFn.classNames.variants` (the keys of variant groups);
-- from the component props, it picks only those keys that are present in `recipeFn.classNames.variants`;
+- from the component props, it picks the value for each key — first checking the direct key (e.g. `variant`), then falling back to the `$`-prefixed key (e.g. `$variant`). The direct key takes priority;
 - it constructs an options object and passes it to `recipeFn(options)`;
 - the result (a string of classes) is added to an array of `classes`.
 
@@ -56,10 +56,30 @@ The final `className` is the list of all classes (in the order recipes were pass
 
 Important: prop forwarding
 
-Current implementation: all remaining props (including variant props) are forwarded to the created element via spread. This means:
-- if `elemType` is a string DOM tag (`'div'`, `'button'`), non-standard attributes (for example, `variant`) will end up in the DOM and trigger React/validator warnings. We recommend:
-  - using a prefix for custom prop names (for example, `$variant`) when working with DOM elements;
-  - or using your own component as `elemType` that accepts and strips custom props before forwarding them to the DOM.
+The implementation distinguishes between **native DOM elements** (`'div'`, `'button'`, etc.) and **React components** (functions/classes):
+
+- For **native DOM elements**, any prop starting with `$` ("transient prop") is automatically stripped before being forwarded to the DOM. These props are still passed to recipe functions.
+- For **React components**, all props (including `$`-prefixed) are forwarded as-is, letting the component handle them.
+
+This lets you use recipe variant names that would conflict with DOM attributes without triggering React warnings:
+
+```tsx
+const Button = styled('button', buttonRecipe);
+
+// $variant → recipe gets { variant: 'primary' }, but <button> DOM does NOT receive $variant
+<Button $variant="primary">Click</Button>
+
+// variant → recipe gets { variant: 'primary' }, AND <button> DOM receives variant
+<Button variant="primary">Click</Button>
+```
+
+Priority: if both `prop` and `$prop` are provided, the unprefixed version takes precedence for the recipe, and the `$`-prefixed version is ignored.
+
+| Condition | `$prop` | `prop` (no prefix) |
+|-----------|---------|-------------------|
+| Native element (`'div'`, `'button'`) | ✅ recipe, ❌ DOM | ✅ recipe, ✅ DOM |
+| Component (`Button`, styled wrapper) | ✅ recipe, ✅ props | ✅ recipe, ✅ props |
+| Both provided simultaneously | fallback | priority |
 
 About refs
 
@@ -241,32 +261,38 @@ Notes
 
 Helpers
 
-The package also exports simple color utilities:
+The package exports color utilities grouped under the `Color` namespace, plus the `ColorSpace` enum:
 
-- darken(value: string, amount: number, colorSpace?: 'srgb' | 'oklab') => string
-  - Darkens the color `value` by `amount` (0..1). The returned string is a CSS `color-mix(...)` expression that can be used in recipes.
-  - Example: `darken('#ffcc00', 0.15)` → "color-mix(in srgb, #ffcc00 15%, black)".
+```ts
+import { Color, ColorSpace } from '@chalp/vanilla-extract-styled';
+```
 
-- lighten(value: string, amount: number, colorSpace?: 'srgb' | 'oklab') => string
-  - Lightens the color `value` by `amount`.
-  - Example: `lighten('#002244', 0.1)`.
+- `Color.darken(value, amount, colorSpace?)` — mixes the color with `black`. Returns a CSS `color-mix(...)` expression.
+  - Example: `Color.darken('#ffcc00', 0.15)` → `"color-mix(in srgb, #ffcc00 15%, black)"`.
 
-- opacify(value: string, amount: number, colorSpace?: 'srgb' | 'oklab') => string
-  - Applies or combines opacity — returns a CSS `color-mix(...)` with `transparent`.
-  - Example: `opacify('#000000', 0.5)`.
+- `Color.lighten(value, amount, colorSpace?)` — mixes the color with `white`.
+  - Example: `Color.lighten('#002244', 0.1)` → `"color-mix(in srgb, #002244 10%, white)"`.
+
+- `Color.opacify(value, amount, colorSpace?)` — mixes the color with `transparent`.
+  - Example: `Color.opacify('#000000', 0.5)` → `"color-mix(in srgb, #000000 50%, transparent)"`.
+
+- `ColorSpace` — enum with values `'srgb'` (default) and `'oklab'`.
+
+`amount` is a number from 0 to 1. `colorSpace` defaults to `ColorSpace.SRGB`.
 
 Examples of using helpers in recipes:
 
 ```ts
 import { recipe } from '@vanilla-extract/recipes';
-import { darken, opacify } from './helpers';
+import { Color, ColorSpace } from '@chalp/vanilla-extract-styled';
 
 export const alertRecipe = recipe({
   base: 'alert',
   variants: {
     tone: {
-      info: { background: opacify('#0af', 0.1) },
-      warn: { background: darken('#ffcc00', 0.05) },
+      info: { background: Color.opacify('#0af', 0.1) },
+      warn: { background: Color.darken('#ffcc00', 0.05) },
+      muted: { background: Color.lighten('#002244', 0.1, ColorSpace.OKLAB) },
     },
   },
 });
@@ -274,7 +300,7 @@ export const alertRecipe = recipe({
 
 Recommendations
 
-- Remember to prefix variant props if you forward them to the DOM (for example, `$variant`) or use a component as `elemType` that filters out DOM-incompatible props.
+- When styling native DOM elements (`'div'`, `'button'`), use the `$` prefix for props that should only be consumed by recipes and not forwarded to the DOM (e.g., `$variant`, `$size`). See "Important: prop forwarding" above.
 - `styled` does not automatically forward refs — wrap the result with `React.forwardRef` if you need a ref.
 
 Contributing and development

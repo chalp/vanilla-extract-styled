@@ -1,8 +1,9 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import checker from 'vite-plugin-checker';
-import dts from 'vite-plugin-dts';
+import dts from 'unplugin-dts/vite';
 
+const srcDir = './src';
 const outDir = 'build';
 
 export default defineConfig({
@@ -24,7 +25,8 @@ export default defineConfig({
       },
     }),
     dts({
-      outDir,
+      entryRoot: srcDir,
+      outDirs: outDir,
       exclude: [
         'node_modules/**',
         '**/stories/**',
