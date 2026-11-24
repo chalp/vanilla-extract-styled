@@ -20,6 +20,11 @@ type RecipeOrClass = RuntimeFn<VariantGroups> | string;
 
 type EmptyObject = NonNullable<unknown>;
 
+export interface StyledOptions {
+  /** Pass `$`-prefixed props to a component not created by `styled()` as-is (stripped by default). */
+  forwardTransientProps?: boolean;
+}
+
 type WithTransient<T> = T & {
   [K in keyof T as K extends `$${string}` ? never : `$${string & K}`]?: T[K];
 };
@@ -37,7 +42,14 @@ type StyledReturn<
 
 const TRANSIENT_PROP_PREFIX = '$';
 
+// Components created by `styled()`: the only ones known to consume `$`-props themselves.
+const styledComponents = new WeakSet<object>();
+
 const isClassName = (v: unknown): v is string => typeof v === 'string';
+const isOptions = (v: unknown): v is StyledOptions => typeof v === 'object' && v !== null;
+const isObjectLike = (v: unknown): v is object => (
+  (typeof v === 'object' || typeof v === 'function') && v !== null
+);
 
 const callRecipeSafely = <
   V extends VariantGroups,
@@ -61,33 +73,67 @@ const callRecipeSafely = <
   return recipeFn(recipeOptions as Resolve<VariantSelection<V>>);
 };
 
-export const styled = <
-  E extends ElementType,
-  T extends readonly RecipeOrClass[],
->(
+const splitArgs = (
+  args: readonly unknown[],
+): { recipes: readonly RecipeOrClass[]; options?: StyledOptions } => {
+  const lastArg = args[args.length - 1];
+
+  if (!isOptions(lastArg)) {
+    return { recipes: args as readonly RecipeOrClass[] };
+  }
+
+  return { recipes: args.slice(0, -1) as readonly RecipeOrClass[], options: lastArg };
+};
+
+const omitTransientProps = (props: Record<string, unknown>): Record<string, unknown> => (
+  Object.fromEntries(
+    Object.entries(props).filter(([key]) => !key.startsWith(TRANSIENT_PROP_PREFIX)),
+  )
+);
+
+export function styled<E extends ElementType, T extends readonly RecipeOrClass[]>(
   elemType: E,
   ...recipes: T
-): StyledReturn<E, T> => (props: Record<string, unknown> = {}) => {
-  const { className: classNameInner, ...rest } = props;
+): StyledReturn<E, T>;
+export function styled<E extends ElementType, T extends readonly RecipeOrClass[]>(
+  elemType: E,
+  ...args: readonly [...recipes: T, options: StyledOptions]
+): StyledReturn<E, T>;
+export function styled(
+  elemType: ElementType,
+  ...args: readonly unknown[]
+): ComponentType<Record<string, unknown>> {
+  const { recipes, options } = splitArgs(args);
 
-  const classes = recipes.map((r) => (
-    isClassName(r) ? r : callRecipeSafely(r, rest)
-  ));
+  // A `$`-prop must never reach the DOM. A host element never gets one; a component gets them only
+  // when it is known to consume them: another `styled()` (it strips them at its own leaf) or an
+  // explicit opt-in. Any other component would typically spread them onto a DOM element.
+  const passesTransientProps = options?.forwardTransientProps === true
+    || (isObjectLike(elemType) && styledComponents.has(elemType));
 
-  const isHostElement = typeof elemType === 'string';
-  const elementProps = (
-    isHostElement
-      ? Object.fromEntries(Object.entries(rest).filter(([key]) => !key.startsWith(TRANSIENT_PROP_PREFIX)))
-      : rest
-  ) as Record<string, unknown>;
+  const component = (props: Record<string, unknown> = {}) => {
+    const { className: classNameInner, ...rest } = props;
 
-  const className = [...classes, classNameInner as string | undefined].filter((clx) => !!clx).join(' ');
+    const classes = recipes.map((r) => (
+      isClassName(r) ? r : callRecipeSafely(r, rest)
+    ));
 
-  // eslint-disable-next-line no-restricted-syntax
-  return createElement(elemType, {
-    ...elementProps,
-    className,
-  });
-};
+    const elementProps = (
+      passesTransientProps ? rest : omitTransientProps(rest)
+    ) as Record<string, unknown>;
+
+    const className = [...classes, classNameInner as string | undefined].filter((clx) => !!clx).join(' ');
+
+    // eslint-disable-next-line no-restricted-syntax
+    return createElement(elemType, {
+      ...elementProps,
+      className,
+    });
+  };
+
+  styledComponents.add(component);
+
+  return component;
+}
 
 export default styled;

@@ -1,8 +1,15 @@
+import type { ComponentProps } from 'react';
+
 import {
   describe,
   it,
   expect,
+  expectTypeOf,
+  vi,
+  afterEach,
 } from 'vitest';
+import { createElement } from 'react';
+import { renderToString } from 'react-dom/server';
 
 import {
   styled,
@@ -13,7 +20,31 @@ import {
   buttonRecipe,
 } from './styled.css';
 
+// Calls a component created by `styled()` as a plain function to inspect the props it passes down.
+type Callable = (props: Record<string, unknown>) => {
+  props: Record<string, unknown>;
+  type: unknown;
+};
+
+const call = (component: unknown, props: Record<string, unknown>) => (
+  component as Callable
+)(props);
+
+// A hand-written component that spreads unknown props onto a DOM element, as third-party ones do.
+const Link = ({ children, ...rest }: { children?: unknown } & Record<string, unknown>) => (
+  createElement('a', rest, children)
+);
+
+// `styled()` around a component that knows nothing about `$`-props.
+const StyledLink = styled(Link, buttonRecipe);
+// The same with an explicit opt-in to pass `$`-props through.
+const OptInStyledLink = styled(Link, buttonRecipe, { forwardTransientProps: true });
+
 describe('styled', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('creates elements with composed className from recipes and string classes', () => {
     const Button = styled('button', buttonRecipe, shadowRecipe, 'ux-card');
 
@@ -103,5 +134,55 @@ describe('styled', () => {
     // direct 'variant' takes priority over '$variant'
     expect(cn).toContain('btn--variant-ghost');
     expect(cn).not.toContain('btn--variant-primary');
+  });
+
+  it('strips $-prefixed props for components not created by styled()', () => {
+    const el = call(StyledLink, { $variant: 'primary', href: '/' });
+
+    // the recipe still gets the variant…
+    expect(String(el.props.className)).toContain('btn--variant-primary');
+    // …but the component does not: it would spread it onto the DOM element
+    expect(Object.hasOwn(el.props, '$variant')).toBe(false);
+    expect(el.props.href).toBe('/');
+  });
+
+  it('keeps $-props inside a styled() chain: the plain component at the end gets none', () => {
+    const EnhancedLink = styled(StyledLink, shadowRecipe);
+
+    const enhancedEl = call(EnhancedLink, { $variant: 'primary', $depth: '2', href: '/' });
+    // the inner styled() still receives variants for its own recipe
+    expect(Object.hasOwn(enhancedEl.props, '$variant')).toBe(true);
+
+    const baseEl = call(enhancedEl.type, enhancedEl.props);
+    expect(String(baseEl.props.className)).toContain('btn--variant-primary');
+    // …but the plain component at the end of the chain does not
+    expect(Object.hasOwn(baseEl.props, '$variant')).toBe(false);
+    expect(Object.hasOwn(baseEl.props, '$depth')).toBe(false);
+  });
+
+  it('forwards $-prefixed props to a plain component on explicit opt-in', () => {
+    const el = call(OptInStyledLink, { $variant: 'primary', href: '/' });
+
+    expect(String(el.props.className)).toContain('btn--variant-primary');
+    expect(Object.hasOwn(el.props, '$variant')).toBe(true);
+    expect(el.props.href).toBe('/');
+  });
+
+  it('infers $-props with and without the options object', () => {
+    expectTypeOf<ComponentProps<typeof StyledLink>>().toHaveProperty('$variant');
+    expectTypeOf<ComponentProps<typeof OptInStyledLink>>().toHaveProperty('$variant');
+  });
+
+  it('renders without a React warning about $-props on a DOM element', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    renderToString(createElement(StyledLink, { $variant: 'primary', href: '/' }));
+    expect(errorSpy).not.toHaveBeenCalled();
+
+    // control for the assertion above: the opt-in is what makes React complain
+    renderToString(createElement(OptInStyledLink, { $variant: 'primary', href: '/' }));
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    // the wording differs between renderers and React versions, the prop name is always reported
+    expect(String(errorSpy.mock.calls[0])).toContain('$variant');
   });
 });

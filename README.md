@@ -32,12 +32,13 @@ pnpm add react react-dom @vanilla-extract/css @vanilla-extract/recipes -w
 
 ## Usage
 
-The key function: `styled(elemType, ...recipes)`.
+The key function: `styled(elemType, ...recipes, options?)`.
 
 - `elemType` — a React element/component: a string tag (`'div'`, `'button'`, etc.) or a React component (functional or class).
 - `...recipes` — any number of arguments, each of which can be:
   - a string — an already prepared `className` that will be appended to the resulting `className`;
   - a `RuntimeFn<VariantGroups>` function from `@vanilla-extract/recipes` (a recipe function). This function will be called at render time with an options object collected from the component's props.
+- `options` — an optional trailing object, currently `{ forwardTransientProps?: boolean }` (see "Important: prop forwarding" below). Only the last argument is treated as options.
 
 The return value is a React component. Its props are:
 - all props of the original `elemType` (for example, for `'button'` — standard button attributes);
@@ -56,10 +57,11 @@ The final `className` is the list of all classes (in the order recipes were pass
 
 Important: prop forwarding
 
-The implementation distinguishes between **native DOM elements** (`'div'`, `'button'`, etc.) and **React components** (functions/classes):
+Props starting with `$` ("transient props") always reach the recipe functions. What happens to them after that depends on the kind of `elemType`:
 
-- For **native DOM elements**, any prop starting with `$` ("transient prop") is automatically stripped before being forwarded to the DOM. These props are still passed to recipe functions.
-- For **React components**, all props (including `$`-prefixed) are forwarded as-is, letting the component handle them.
+- For **native DOM elements** (`'div'`, `'button'`, etc.), `$`-props are stripped before being forwarded to the DOM.
+- For **components created by `styled()`**, `$`-props are passed on: the inner `styled()` consumes them for its own recipes and strips them at its leaf. This is what makes `styled(styled(...))` chains work.
+- For **any other component** (third-party, hand-written, a `memo`/`forwardRef` wrapper), `$`-props are stripped by default: such a component knows nothing about them and would typically spread them onto a DOM element.
 
 This lets you use recipe variant names that would conflict with DOM attributes without triggering React warnings:
 
@@ -73,12 +75,38 @@ const Button = styled('button', buttonRecipe);
 <Button variant="primary">Click</Button>
 ```
 
+The same rule protects wrapped components:
+
+```tsx
+// Hand-written, third-party-like: spreads everything it does not know onto the DOM.
+const Link = ({ to, className, children, ...rest }) => (
+  <a href={to} className={className} {...rest}>{children}</a>
+);
+
+const Logo = styled(Link, logoRecipe);
+
+// $big → logoRecipe gets { big: true }, Link does NOT receive $big
+<Logo to="/" $big />
+```
+
+A component that consumes `$`-props itself can ask for them with the trailing options object:
+
+```tsx
+const Logo = styled(Link, logoRecipe, { forwardTransientProps: true });
+```
+
+The recognition is by identity: a `styled()` component wrapped in `memo()`, `forwardRef()` or a custom higher-order component is no longer recognized and needs the opt-in as well.
+
+Earlier versions forwarded `$`-props to every component; now they are stopped unless the component is created by `styled()` or opts in.
+
 Priority: if both `prop` and `$prop` are provided, the unprefixed version takes precedence for the recipe, and the `$`-prefixed version is ignored.
 
 | Condition | `$prop` | `prop` (no prefix) |
 |-----------|---------|-------------------|
 | Native element (`'div'`, `'button'`) | ✅ recipe, ❌ DOM | ✅ recipe, ✅ DOM |
-| Component (`Button`, styled wrapper) | ✅ recipe, ✅ props | ✅ recipe, ✅ props |
+| Component created by `styled()` | ✅ recipe, ✅ passed on | ✅ recipe, ✅ props |
+| Other component | ✅ recipe, ❌ not passed | ✅ recipe, ✅ props |
+| Other component, `{ forwardTransientProps: true }` | ✅ recipe, ✅ props | ✅ recipe, ✅ props |
 | Both provided simultaneously | fallback | priority |
 
 About refs
@@ -152,7 +180,8 @@ const Link = ({ href, className, children, ...rest }) => (
 const StyledLink = styled(Link, linkRecipe);
 
 // <StyledLink href="/" active>Home</StyledLink>
-// All props are passed to Link, and linkRecipe will be called with appropriate variant props
+// All props but the $-prefixed ones are passed to Link; those go to linkRecipe only.
+// linkRecipe is called with the variant props collected from the component's props.
 ```
 
 Types (short)
@@ -162,6 +191,8 @@ The returned component is typed as:
 ComponentType< ComponentPropsWithoutRef<E> & VariantPropsFromMerged<T> & { className?: string } >
 
 This means TypeScript will try to infer variant props from the provided recipe functions (`VariantPropsFromMerged<T>`).
+
+`styled` is declared with two overloads, `styled(elemType, ...recipes)` and `styled(elemType, ...recipes, options)`, that share the result type: the options object is not part of `T`, so it does not affect inference. `StyledOptions` is exported for typing the options object outside the call.
 
 TypeScript example (detailed)
 
@@ -185,6 +216,9 @@ type VariantSelection<Variants extends VariantGroups> = {
 
 // RecipeOrClass — either a runtime recipe function or a className string
 type RecipeOrClass = RuntimeFn<VariantGroups> | string;
+
+// StyledOptions — the trailing options object of a styled() call
+type StyledOptions = { forwardTransientProps?: boolean };
 
 type EmptyObject = NonNullable<unknown>;
 
@@ -256,6 +290,7 @@ Notes
 
 - The first argument to `styled` is either a string tag (`'div'`, `'button'`) or a React component.
 - You can pass any number of arguments afterward: strings (pre-made class names) and/or recipe functions (`RuntimeFn<VariantGroups>`).
+- A call may end with an options object: `{ forwardTransientProps: true }` makes a component not created by `styled()` receive `$`-props too. See "Important: prop forwarding" above.
 - `VariantPropsFromMerged<T>` merges the variant types (`RecipeVariants`) from all provided recipe functions.
 - If you pass recipe functions that share variant group names, the resulting props will be merged accordingly (the behavior is defined by `RecipeVariants` types from `@vanilla-extract/recipes`).
 
@@ -300,7 +335,7 @@ export const alertRecipe = recipe({
 
 Recommendations
 
-- When styling native DOM elements (`'div'`, `'button'`), use the `$` prefix for props that should only be consumed by recipes and not forwarded to the DOM (e.g., `$variant`, `$size`). See "Important: prop forwarding" above.
+- Prefer the `$` prefix for recipe-only props (e.g., `$variant`, `$size`): recipes always get them, while the DOM never does. A component that is not created by `styled()` receives them only when you opt in with `{ forwardTransientProps: true }`. See "Important: prop forwarding" above.
 - `styled` does not automatically forward refs — wrap the result with `React.forwardRef` if you need a ref.
 
 Contributing and development
